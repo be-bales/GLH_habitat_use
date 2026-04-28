@@ -1,11 +1,13 @@
+##generate climate predictions (standalone script)
+
 library(terra)
 library(dplyr)
 library(sdmTMB)
 
 setwd("D:/BrennaStuff/Github/Turbot-Thesis-Brenna")
 
-
-mod_climate <- readRDS("Data/mod_climate.rds")
+mod_climate <- readRDS("Data/mod_climate_ices_ns_n_anis.rds")
+mod_climate$formula
 pres_abs <- readRDS("Data/pres_abs_extracted.rds")
 
 means <- apply(pres_abs[,c("temp", "sal", "smf", "tri", "bpi_coarse", "bpi_fine", "depth")], 2, mean, na.rm=T)
@@ -36,9 +38,9 @@ bpi_fine_sd <- scaled_data[6,3]
 depth_mean <- scaled_data[7,2]
 depth_sd <- scaled_data[7,3]
 
-years <- 2020:2049
-scenarios <- c(119, 245, 585)
-seasons <- c("spring", "fall")
+years <- 2040:2049
+scenarios <- c(585)
+#seasons <- c("spring", "fall")
 
 ## loop turning EACH stack into a data frame, subset complete cases,
 ## standarize using training data, make season a factor, and predict
@@ -56,32 +58,32 @@ n <- 10
 
 for(ssp in scenarios) {
   for(yr in years) {
-    for(ss in seasons) {
-      cat("\nProcessing:", ssp, yr, ss, "\n")
+   # for(ss in seasons) {
+      cat("\nProcessing:", ssp, yr, "\n")
       
       #check if this has been run and skip if it has
       if (
         !file.exists(
-          sprintf("climate_predictions/preds_%s_%s_%s.rds", ssp, yr, ss)
+          sprintf("climate_predictions/preds_%s_%s.rds", ssp, yr)
         )
       ){
         
         stack_file <- sprintf(
-          "climate_prediction_stacks/stack_%s_%s_%s.rds",
-          ssp, yr, ss
-        )
-        prediction_stack_ssp_year_season <- readRDS(stack_file)
-        prediction_stack_ssp_year_season <- unwrap(prediction_stack_ssp_year_season)
+          "climate_prediction_stacks/stack_%s_%s.rds",
+          ssp, yr)
         
-        cat("Changing stack to frame for:", ssp, yr, ss, "\n")
+        prediction_stack_ssp_year <- readRDS(stack_file)
+        #prediction_stack_ssp_year <- unwrap(prediction_stack_ssp_year)
         
-        prediction_frame_ssp_year_season <- as.data.frame(prediction_stack_ssp_year_season, na.rm = FALSE)
+        cat("Changing stack to frame for:", ssp, yr, "\n")
         
-        complete_cases <- complete.cases(prediction_frame_ssp_year_season)
-        prediction_frame_ssp_year_season <- prediction_frame_ssp_year_season[complete_cases,] 
+        prediction_frame_ssp_year <- as.data.frame(prediction_stack_ssp_year, na.rm = FALSE)
+        
+        complete_cases <- complete.cases(prediction_frame_ssp_year)
+        prediction_frame_ssp_year <- prediction_frame_ssp_year[complete_cases,] 
         
         ## standardize using means and SD of training data 
-        prediction_frame_ssp_year_season_scaled <- prediction_frame_ssp_year_season %>%
+        prediction_frame_ssp_year_scaled <- prediction_frame_ssp_year %>%
           mutate(temp = (temp-temp_mean) / temp_sd,
                  depth = (depth -depth_mean)/depth_sd,
                  sal = (sal-sal_mean )/ sal_sd,
@@ -90,44 +92,44 @@ for(ssp in scenarios) {
                  bpi_fine = (bpi_fine-bpi_fine_mean)/bpi_fine_sd,
                  tri = (tri-tri_mean)/tri_sd)
         
-        rm(prediction_frame_ssp_year_season)
+        rm(prediction_frame_ssp_year)
         gc()
         
         ## make season a factor just in case it didn't change  
-        prediction_frame_ssp_year_season_scaled$season <- factor(prediction_frame_ssp_year_season_scaled$season,
-                                                                 levels = c("spring", "fall"),
-                                                                 labels = c(1,2))
+       # prediction_frame_ssp_year_season_scaled$met_season <- factor(prediction_frame_ssp_year_season_scaled$met_season,
+                                                                # levels = c("winter", "spring", "summer" ," fall"),
+                                                               #  labels = c(1,2, 3, 4))
         
-        cat ("Predicting for:", ssp, yr, ss, "\n")
+        cat ("Predicting for:", ssp, yr, "\n")
         
         ## now loop every single stack frame through this predict function
-        preds_year_season <- list()
-        chunk <- ceiling(nrow(prediction_frame_ssp_year_season_scaled)/n)
+        preds_year <- list()
+        chunk <- ceiling(nrow(prediction_frame_ssp_year_scaled)/n)
         for(i in 1:n){
           print(i)
           if(i<n){
-            preds_year_season[[i]] <- predict(mod_climate, 
-                                              newdata=prediction_frame_ssp_year_season_scaled[((i-1)*chunk+1):(i*chunk),], 
+            preds_year[[i]] <- predict(mod_climate, 
+                                              newdata=prediction_frame_ssp_year_scaled[((i-1)*chunk+1):(i*chunk),], 
                                               type = "response")
           } else{
-            preds_year_season[[i]] <- predict(mod_climate, 
-                                              newdata=prediction_frame_ssp_year_season_scaled[((i-1)*chunk+1):nrow(prediction_frame_ssp_year_season_scaled),], 
+            preds_year[[i]] <- predict(mod_climate, 
+                                              newdata=prediction_frame_ssp_year_scaled[((i-1)*chunk+1):nrow(prediction_frame_ssp_year_scaled),], 
                                               type = "response")
           }
         }
-        preds_year_season <- do.call(rbind, preds_year_season)
+        preds_year <- do.call(rbind, preds_year)
         
-        rm(prediction_frame_ssp_year_season_scaled)
+        rm(prediction_frame_ssp_year_scaled)
         gc()
         
         saveRDS(
-          preds_year_season,
-          file = sprintf("climate_predictions/preds_%s_%s_%s.rds", ssp, yr, ss)
+          preds_year,
+          file = sprintf("climate_predictions/preds_%s_%s.rds", ssp, yr)
         )
         
-        rm(preds_year_season)
+        rm(preds_year)
         gc()
       }
     }
   }
-}
+

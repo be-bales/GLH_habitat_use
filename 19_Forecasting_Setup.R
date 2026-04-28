@@ -1,4 +1,4 @@
-## refit model with extra years 
+## refit model with extra years if you haven't done it in model validation already
 extra_years <- c(2020:2050)
 
 ## refit with new years
@@ -75,7 +75,6 @@ sal_layer_245_2040_2050 <- sal_layer_245[[3]]
 #do_layer_245_2040_2050 <- do_layer_245[[3]]
 
 ## 5-8.5
-
 temp_585 <- "thetao_ssp585_2020_2100_depthmean"
 sal_585 <- "so_ssp585_2020_2100_depthmean"
 do_585 <- "o2_ssp585_2020_2100_depthmean"
@@ -167,12 +166,13 @@ names(climate_vars) <-c(
   "sal_245_2040_2050",  
   "sal_585_2040_2050") 
 
-writeRaster(climate_vars, "temp_data/climate_vars.tif", overwrite = T)
+#writeRaster(climate_vars, "temp_data/climate_vars.tif", overwrite = T)
 climate_vars <- rast("temp_data/climate_vars.tif")
 names(climate_vars)
 plot(climate_vars)
 
 dir.create("climate_rasters", showWarnings = FALSE)
+
 #####
 temp_SSP119_2020_2030 <- climate_vars[[1]]
 temp_SSP245_2020_2030 <- climate_vars[[2]]
@@ -245,16 +245,14 @@ climate_layers <- list(
     )
   )
 )
-saveRDS(climate_layers, "temp_data/climate_layers.rds")
 
 #####
 
+## Create predictions stacks 
 
-
-## Create predictions showing presence probability changing 
-## decadally by SSP
-years <- 2040:2049
+years <- 2020:2049
 scenarios <- c(119, 245, 585)
+#seasons <- c("winter", "spring", "summer", "fall")
 
 get_decade_key <- function(year) {
   if (year >= 2020 && year < 2030) return("2020-2030")
@@ -266,26 +264,25 @@ get_decade_key <- function(year) {
 jobs <- expand.grid(
   ssp = scenarios,
   yr  = years,
-  ss  = seasons,
+ # ss  = seasons,
   stringsAsFactors = FALSE
 )
 jobs$ssp <- as.character(jobs$ssp)
 
 dir.create("climate_prediction_stacks", showWarnings = FALSE)
 
-
 for(i in 1:nrow(jobs)) {
   
   ssp <- jobs$ssp[i]
   yr  <- jobs$yr[i]
-  ss  <- jobs$ss[i]
+  #ss  <- jobs$ss[i]
   
-  cat("Creating raster stack:", ssp, yr, ss, "\n")
+  cat("Creating raster stack:", ssp, yr, "\n")
   
   ## set season_raster values set for either spring, fall (already existing raster)
-  season_raster_temp <- deepcopy(static_stack[[1]])
-  values(season_raster_temp) <- ss
-  season_raster_temp <- mask(season_raster_temp, NAFO_vect)
+  #season_raster_temp <- deepcopy(static_stack[[1]])
+  #values(season_raster_temp) <- ss
+  #season_raster_temp <- mask(season_raster_temp, NAFO_vect)
   
   ## set year_raster values for the specific year (already existing raster)
   year_raster_temp <- deepcopy(static_stack[[1]])
@@ -297,16 +294,17 @@ for(i in 1:nrow(jobs)) {
   temp_layer_use <- rast(climate_layers[[dec_key]][[ssp]]$temp)
   sal_layer_use  <- rast(climate_layers[[dec_key]][[ssp]]$sal)
   
+  
   ## loop combining the new temp, sal, season, and year rasters back into the raster stack
-  prediction_stack_ssp_year_season <- c(temp_layer_use, 
+  prediction_stack_ssp_year <- c(temp_layer_use, 
                                     sal_layer_use,
                                     static_stack, 
-                                    season_raster_temp, 
+                                    #season_raster_temp, 
                                     year_raster_temp)
   
   ## these are the names for the raster layers needed
   ## within each stack for the model to predict correctly 
-  names(prediction_stack_ssp_year_season) <- c("temp", 
+  names(prediction_stack_ssp_year) <- c("temp", 
                                            "sal",
                                            "depth", 
                                            "bpi_fine", 
@@ -315,108 +313,16 @@ for(i in 1:nrow(jobs)) {
                                            "smf", 
                                            "X",
                                            "Y",
-                                           "season",
+                                           #"season",
                                            "year") 
   
   ## store with unique key
   saveRDS(
-    prediction_stack_ssp_year_season,
-    file = sprintf("climate_prediction_stacks/stack_%s_%s_%s.rds", 
-                   gsub(" ", "_", ssp), yr, ss)
+    prediction_stack_ssp_year,
+    file = sprintf("climate_prediction_stacks/stack_%s_%s.rds", 
+                   gsub(" ", "_", ssp), yr)
   )
   
-  rm(prediction_stack_ssp_year_season, season_raster_temp, year_raster_temp)
+  rm(prediction_stack_ssp_year, year_raster_temp)
   gc()
 }
-
-## now predict off the raster
-
-dir.create("climate_prediction_frames", showWarnings = FALSE)
-dir.create("climate_predictions", showWarnings = FALSE)
-
-foreach(i = 1:nrow(jobs)) %dopar% {
-                      
-  time_finish_processing <- Sys.time()
-  
-                      ssp <- jobs$ssp[i]
-                      yr  <- jobs$yr[i]
-                      ss  <- jobs$ss[i]
-    
-    cat("\nProcessing:", ssp, yr, ss, "\n")
-    
-    stack_file <- sprintf("climate_prediction_stacks/stack_%s_%s_%s.rds",ssp, yr, ss)
-    prediction_stack_ssp_year_season <- readRDS(stack_file)
-    
-    cat("Changing stack to frame for:", ssp, yr, ss, "\n")
-    
-    prediction_frame_year_season <- as.data.frame(prediction_stack_ssp_year_season, na.rm = FALSE)
-    
-    rm(prediction_stack_ssp_year_season)
-    gc()
-    
-    complete_cases <- complete.cases(prediction_stack_ssp_year_season)
-    prediction_frame_ssp_year_season <- prediction_stack_ssp_year_season[complete_cases,] 
-    
-    ## standardize using means and SD of training data 
-    prediction_frame_ssp_year_season_scaled <- prediction_frame_ssp_year_season %>%
-      mutate(temp = (temp-temp_mean) / temp_sd,
-             sal = (sal-sal_mean )/ sal_sd,
-             smf = (smf-smf_mean)/smf_sd,
-             bpi_coarse = (bpi_coarse-bpi_coarse_mean)/bpi_coarse_sd,
-             bpi_fine = (bpi_fine-bpi_fine_mean)/bpi_fine_sd,
-             tri = (tri-tri_mean)/tri_sd)
-    
-    ## make season a factor just in case it didn't change  
-    prediction_frame_ssp_year_season_scaled$season <- factor(prediction_frame_ssp_year_season_scaled$season,
-                                                         levels = c("spring", "summer", "fall"),
-                                                         labels = c(1,2,3))
-    
-    cat ("Predicting for:", ssp, yr, ss, "\n")
-    
-    ## now loop every single stack frame through this predict function
-    preds_ssp_year_season <- predict(mod_climate, 
-                                 newdata=prediction_frame_ssp_year_season_scaled, 
-                                 type = "response")
-    
-    saveRDS(
-      preds_ssp_year_season,
-      file = sprintf("climate_predictions/preds_%s_%s_%s.rds", ssp, yr, ss)
-    )
-    
-    rm(prediction_frame_ssp_year_season,
-       prediction_frame_ssp_year_season_scaled,
-       preds_ssp_year_season)
-    
-    gc()
-    
-}
-
-stopCluster(cl)
-registerDoSEQ()
-
-## see one raster
-stack_119_2045_fall <- readRDS(
-  "climate_prediction_stacks/stack_119_2045_fall.rds"
-)
-
-stack_119_2045_fall
-plot(stack_119_2045_fall)
-stack_119_2045_fall <- as.data.frame(stack_119_2045_fall)
-
-## get decadal means
-decadal_mean_2020_2029 <- make_decadal_mean_from_preds(
-  years = 2020:2029,
-  seasons,
-  pred_dir = "predictions",
-  template_raster = env_stack_all[[1]],
-  complete_cases = complete_cases,   
-  pred_col = "est",
-  out_file = "decadal_mean_2020_2029.tif"
-)
-
-plot(decadal_mean_2020_2029)
-
-decades_stack <- c(decadal_mean_2000_2009, decadal_mean_2010_2019)
-diff_Raster <- decadal_mean_2010_2019 -decadal_mean_2000_2009
-plot(diff_raster)
-

@@ -188,12 +188,15 @@ mod_ices <- sdmTMB(
   spatiotemporal = "RW"
 )
 
-
 AIC(mod_ices) 
 sanity(mod_ices)
 summary(mod_ices)
 #saveRDS(mod_ices,"Data/mod_ices.rds")
-#mod_ices <- readRDS("Data/mod_ices.rds")
+mod_ices <- readRDS("Data/mod_ices.rds")
+mod1 <- tidy(mod_ices, conf.int = TRUE)
+write.csv(mod1, "Data/mod_export.csv")
+mod2 <- tidy(mod_ices, "ran_pars", conf.int = TRUE)
+write.csv(mod2, "Data/mod_export_2.csv")
 
 ## ICES model w/o season
 mod_ices_no_season <- sdmTMB(
@@ -210,7 +213,7 @@ AIC(mod_ices_no_season)
 sanity(mod_ices_no_season)
 summary(mod_ices_no_season)
 #saveRDS(mod_ices_no_season,"Data/mod_ices_no_season.rds")
-#mod_ices_ns <- readRDS("Data/mod_ices_no_season.rds")
+mod_ices_ns <- readRDS("Data/mod_ices_no_season.rds")
 cAIC(mod_ices_ns, what = "cAIC")
 
 ## ICES model no smoothers
@@ -320,91 +323,73 @@ sdmTMB::cAIC(mod_anis)
 plot_anisotropy(mod_ar_2)
 
 # Get predictions and residuals 
-preds <- predict(mod_rw_temp, type = "response")
-saveRDS(preds, "Data/sdmTMB_preds.rds")
-resids_mle <- residuals(mod_rw_temp, type = "mle-mvn")
-resids_response <- residuals(mod_rw_temp, type = "response")
-qqnorm(resids_mle)
-abline(0, 1)
-qqline(resids_mle)
-
-preds <- readRDS("Data/sdmTMB_preds.rds")
-
-## view confidence intervals on fixed effects, random effect, and 
-## variance parameters
-
-model_intercepts <- tidy(mod_rw_temp, conf.int = TRUE)
-write.csv(model_intercepts, "Data/model_intercepts.csv")
-ran_pars <- tidy(mod_rw_temp, "ran_pars", conf.int = TRUE)
-
-write.csv(ran_pars, "Data/ran_pars.csv")
-                                                                                                                                                                                                                                                                                                                                           
-## plot + map 
-mod_resids <- cbind(mod_rw_temp$data, resids_mle)
-
-land_shp <- st_read("Data/Land_shp.shp")
-
-land_shp_km <- st_transform(land_shp, crs = 32622 )
-st_geometry(land_shp_km) <- st_geometry(land_shp_km) / 1000
-st_crs(land_shp_km) <- st_crs(32622)
-
-mod_resids_df <- st_as_sf(mod_resids, coords = c("X", "Y"), crs = 32622)
-plot(mod_resids_df)
-
-model_residuals_plot <- ggplot() +
-   geom_sf(data = mod_resids_df) +
-   scale_colour_gradient2(name = "MLE Residual") +
-  geom_sf(data = land_shp_km, fill = "grey90", color = "black", inherit.aes = F) +
-  coord_sf(crs =st_crs(32622), ylim = c(4700,6500), xlim = c(-250, 1000)) +
-  theme_bw() +
-  theme(axis.text = element_blank(),
-        axis.ticks = element_blank()) +
-  theme(plot.margin = margin(2, 2, 2, 2, unit = "pt")) +
-  labs(title = "Model Residuals")
-
-ggsave("Figures/model_residuals_plot.tif",
-       dpi = 300,
-       width = 18,
-       height = 20,
-       device = "tiff",
-       compression = "lzw",
-       units = "cm",
-       bg = "white")
-
-
-model_residuals_plot_alltime <- ggplot(mod_resids, aes(X, Y, col = resids_mle)) + 
-  scale_colour_gradient2(name ="MLE Residuals") +
-  geom_point(size = 0.5) +
-  geom_sf(data = land_shp_km, fill = "grey90", color = "black", inherit.aes = F) +
-  coord_sf(crs =st_crs(32622), ylim = c(4700,6500), xlim = c(-250, 1000)) +
-  theme_bw() +
-  theme(axis.text = element_blank(),
-        axis.ticks = element_blank()) +
-  theme(plot.margin = margin(2, 2, 2, 2, unit = "pt")) +
-  theme_bw()+
-  labs(title = "Model Residuals 2000-2019")
-
-ggsave("Figures/model_residuals_plot_alltime.tif",
-       dpi = 300,
-       width = 14,
-       height = 18,
-       device = "tiff",
-       compression = "lzw",
-       units = "cm",
-       bg = "white")
-
-ggplot(preds, aes(X, Y, col = est)) + 
-  scale_colour_gradient2() +
-  geom_point() +
-  facet_wrap(~year) +
-  coord_fixed() +
-  labs(title = "Model Predictions")
-
-## permutation importance
+preds <- predict(mod_ices_ns, type = "response")
 
 roc_full <- roc(pres_abs_scaled$presence, plogis(preds$est), quiet = TRUE)
 auc_full <- as.numeric(auc(roc_full))
 print(auc_full)
+auc_validation <- 0.963864 ## mod_iceS_ns
+
+saveRDS(preds, "Data/sdmTMB_preds_ices.rds")
+resids_mle <- residuals(mod_ices, type = "mle-mvn")
+qqnorm(resids_mle)
+abline(0, 1)
+qqline(resids_mle)
+
+tiff(file="QQ_plot.tif",
+     width=3, height=2, units="in", res=100)
+dev.off()
+
+#preds <- readRDS("Data/sdmTMB_preds.rds")
+
+## view confidence intervals on fixed effects, random effect, and 
+## variance parameters
+
+model_intercepts <- tidy(mod_ices, conf.int = TRUE)
+write.csv(model_intercepts, "Data/model_intercepts_ices.csv")
+ran_pars <- tidy(mod_ices, "ran_pars", conf.int = TRUE)
+write.csv(ran_pars, "Data/ran_pars_ices.csv")
+                                                                                                                                                                                                                                                                                                                                           
+## plot residuals on map
+mod_resids <- cbind(mod_ices$data, resids_mle)
+
+## import land
+land_shp <- st_read("Data/Land_shp.shp")
+land_shp_km <- st_transform(land_shp, crs = 32622 )
+st_geometry(land_shp_km) <- st_geometry(land_shp_km) / 1000
+st_crs(land_shp_km) <- st_crs(32622)
+
+## convert to spatial
+mod_resids_df <- st_as_sf(mod_resids, coords = c("X", "Y"), crs = 32622)
+plot(mod_resids_df)
+
+model_residuals_plot_alltime <- ggplot(mod_resids, aes(X, Y, col = resids_mle)) + 
+  scale_colour_gradient2(name ="MLE Residuals") +
+  geom_point(size = 0.4, alpha = 0.8) +
+  geom_sf(data = land_shp_km, fill = "grey90", color = "black", inherit.aes = F) +
+  coord_sf(crs =st_crs(32622), ylim = c(4700,6500), xlim = c(-250, 1000)) +
+  theme_bw() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid=element_blank(),
+        plot.background = element_rect(fill = "white", color = NA),
+        legend.key.size = unit(0.4, 'cm'),
+        legend.text = element_text(size =8),
+        text = element_text(size = 8),
+        axis.title.x  = element_text(size = 8),
+        axis.title.y  = element_text(size = 8)) +
+  labs(title = "Model Residuals 2000-2019")
+
+ggsave("Figures/model_residuals_ices.tif",
+       plot = model_residuals_plot_alltime,
+       width = 13,
+       height = 15,
+       units = "cm",
+       dpi = 300,
+       device = "tiff",
+       compression = "lzw",
+       bg = "white")
+
 
 ##TSS
 preds$pred_01 <- ifelse(preds$est < 0.5, 0, 1)
@@ -422,9 +407,9 @@ TSS <- true_pos_rate + true_neg_rate - 1
 TSS 
 
 pred_vars <- c( "temp", "sal", "depth", "bpi_coarse", "bpi_fine",
-                "tri", "smf", "season")
+                "tri", "smf")
 
-n_perms <- 1000
+n_perms <- 200
 
 perm_importance <- lapply(pred_vars, function(v) {
   
@@ -437,7 +422,7 @@ perm_importance <- lapply(pred_vars, function(v) {
     perm_data[[v]] <- sample(perm_data[[v]])
     
     # Predict on full dataset
-    perm_out <- predict(mod_rw_temp,
+    perm_out <- predict(mod_ices_ns,
                         newdata = perm_data,
                         type = "response")
     
@@ -445,7 +430,7 @@ perm_importance <- lapply(pred_vars, function(v) {
     perm_preds <- perm_out$est
 
     auc_perm <- as.numeric(auc(pres_abs_scaled$presence, perm_preds))
-    auc_full - auc_perm
+    auc_validation - auc_perm
   })
   
   data.frame(
@@ -460,4 +445,6 @@ perm_importance <- do.call(rbind, perm_importance) %>%
 perm_importance$delta_auc <- round(perm_importance$delta_auc, 4)
 perm_importance
 
-saveRDS(perm_importance, "Data/perm_importance_w_season.rds")
+write.csv(perm_importance, "Data/perm_imp_april_sdm.csv")
+
+saveRDS(perm_importance, "Data/perm_importance_ices.rds")

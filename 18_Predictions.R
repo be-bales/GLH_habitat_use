@@ -1,5 +1,7 @@
 
 
+## create env_stack to predict on
+#####
 ##now done with table -- want to create rasters 
 temp_1 <- temp_layer[[1]] ##2000-2009
 temp_2 <- temp_layer[[2]] #2010-2019
@@ -82,9 +84,8 @@ masked_vars <- lapply(cropped_vars, function(x) mask(x, NAFO_vect))
 env_stack_all <- rast(masked_vars)
 
 #writeRaster(env_stack_all, "Data/env_stack_all.tif", overwrite = T)
+#####
 env_stack_all <- terra::rast("Data/env_stack_all.tif")
-
-plot(env_stack_all)
 
 ## make season and years
 season_raster <- deepcopy(env_stack_all[[1]])
@@ -116,7 +117,6 @@ names(env_stack_w_season) <- c("temp",
                       "season",
                       "year")
 
-
 env_stack_frame <- as.data.frame(env_stack_w_season, na.rm =F)
 complete_cases <- complete.cases(env_stack_frame)
 env_stack_frame <- env_stack_frame[complete_cases,] 
@@ -133,8 +133,8 @@ env_stack_frame_scaled <- env_stack_frame %>%
 
 ## season factor 
 env_stack_frame_scaled$season <- factor(env_stack_frame_scaled$season,
-                                        levels = c("spring", "fall"),
-                                        labels = c(1,2))
+                                        levels = c("winter", "spring", "summer", "fall"),
+                                        labels = c(1,2,3,4))
 
 preds_spring_2000_sdm <- predict(mod_rw_temp, 
                              newdata=env_stack_frame_scaled, 
@@ -186,57 +186,29 @@ plot(static_stack)
 writeRaster(static_stack, "Data/static_stack.tiff")
 static_stack <- rast("Data/static_stack.tiff")
 
-
-layers <- list(
-  env_stack_all[[1]], 
-  env_stack_all[[3]], 
-  env_stack_all[[5]],  
-  env_stack_all[[7]], 
-  env_stack_all[[8]], 
-  env_stack_all[[9]], 
-  env_stack_all[[10]],
-  env_stack_all[[11]],
-  env_stack_all[[12]]) 
-
-layers_stack <- rast(layers)
-names(layers_stack) <- c("temperature", 
-                         "salinity", 
-                         "dissolved oxygen", 
-                         "depth", 
-                         "BPI coarse", 
-                         "BPI fine", 
-                         "slope", 
-                         "TRI",
-                         "SMF") 
-plot(layers_stack)
-
-#####
-
 ## get decadal layers 
 temp_1 <- env_stack_all[[1]]
 temp_2 <- env_stack_all[[2]]
 sal_1 <- env_stack_all[[3]]
 sal_2 <- env_stack_all[[4]]
 
-plot(temp_1)
-
 ## make stacks for every season (spring, summer, fall) in every year from 2000-2019
-seasons <- c("spring", "fall")
-years <- c(2000:2019)
+#seasons <- c("winter", "spring", "summer", "fall")
+years <- c(2010:2019)
 
 ## loop making all stacks for each season, each year 
 
 dir.create("prediction_stacks", showWarnings = FALSE)
 
 for (yr in years) {
-  for (ss in seasons) {
+  #for (ss in seasons) {
     
-    cat("Creating raster stack:", yr, ss, "\n")
+    cat("Creating raster stack:", yr, "\n")
     
     ## set season_raster values set for either spring, summer, fall (already existing raster)
-    season_raster_temp <- deepcopy(static_stack[[1]])
-    values(season_raster_temp) <- ss
-    season_raster_temp <- mask(season_raster_temp, NAFO_vect)
+    #season_raster_temp <- deepcopy(static_stack[[1]])
+   # values(season_raster_temp) <- ss
+    #season_raster_temp <- mask(season_raster_temp, NAFO_vect)
     
     ## set year_raster values for the specific year (already existing raster)
     year_raster_temp <- deepcopy(static_stack[[1]])
@@ -253,15 +225,15 @@ for (yr in years) {
     }
     
     ## loop combining the new temp, sal, season, and year rasters back into the raster stack
-    prediction_stack_year_season <- c(temp_layer_use, 
+    prediction_stack_year <- c(temp_layer_use, 
                                       sal_layer_use,
                                       static_stack, 
-                                      season_raster_temp, 
+                                      #season_raster_temp, 
                                       year_raster_temp)
     
     ## these are the names for the raster layers needed
     ## within each stack for the model to predict correctly 
-    names(prediction_stack_year_season) <- c("temp", 
+    names(prediction_stack_year) <- c("temp", 
                                              "sal",
                                              "depth", 
                                              "bpi_fine", 
@@ -270,60 +242,59 @@ for (yr in years) {
                                              "smf", 
                                              "X",
                                              "Y",
-                                             "season",
+                                             #"season",
                                              "year") 
     
     ## store with unique key
     saveRDS(
-      prediction_stack_year_season,
-      file = sprintf("prediction_stacks/stack_%s_%s.rds", yr, ss)
+      prediction_stack_year,
+      file = sprintf("prediction_stacks/stack_%s.rds", yr)
     )
     
-    rm(prediction_stack_year_season)
+    rm(prediction_stack_year)
     gc()
-  }}
+  }
 
 ## see one raster
-stack_2000_summer <- readRDS(
-  "prediction_stacks/stack_2000_summer.rds"
+stack_2000 <- readRDS(
+  "prediction_stacks/stack_2000_fall.rds"
 )
 
-stack_2000_summer
-plot(stack_2000_summer)
+stack_2000
+plot(stack_2000)
 stack_2000_summer <- as.data.frame(stack_2000_summer)
 
 complete_cases <- complete.cases(stack_2000_summer)
 saveRDS(complete_cases, "Data/complete_cases.rds")
+complete_cases <- readRDS("Data/complete_cases.rds")
 
 ## loop turning EACH stack into a data frame, subset complete cases,
 ## standarize using training data, make season a factor, and predict
 
 ## make a smaller set
-years <- c(2000:2009)
-
 dir.create("prediction_frames", showWarnings = FALSE)
 dir.create("predictions", showWarnings = FALSE)
 
 for (yr in years) {
-  for (ss in seasons) {
+  #for (ss in seasons) {
     
-    cat("\nProcessing:", yr, ss, "\n")
+    cat("\nProcessing:", yr, "\n")
     
-    stack_file <- sprintf("prediction_stacks/stack_%s_%s.rds", yr, ss)
-    prediction_stack_year_season <- readRDS(stack_file)
+    stack_file <- sprintf("prediction_stacks/stack_%s.rds", yr)
+    prediction_stack_year <- readRDS(stack_file)
     
-    cat("Changing stack to frame for:", yr, ss, "\n")
+    cat("Changing stack to frame for:", yr, "\n")
     
-    prediction_frame_year_season <- as.data.frame(prediction_stack_year_season, na.rm = FALSE)
+    prediction_frame_year <- as.data.frame(prediction_stack_year, na.rm = FALSE)
     
-    rm(prediction_stack_year_season)
+    rm(prediction_stack_year)
     gc()
     
-    complete_cases <- complete.cases(prediction_frame_year_season)
-    prediction_frame_year_season <- prediction_frame_year_season[complete_cases,] 
+    complete_cases <- complete.cases(prediction_frame_year)
+    prediction_frame_year <- prediction_frame_year[complete_cases,] 
     
     ## standardize using means and SD of training data 
-    prediction_frame_year_season_scaled <- prediction_frame_year_season %>%
+    prediction_frame_year_scaled <- prediction_frame_year %>%
       mutate(temp = (temp-temp_mean) / temp_sd,
              depth = (depth - depth_mean) / depth_sd,
              sal = (sal-sal_mean )/ sal_sd,
@@ -332,86 +303,86 @@ for (yr in years) {
              bpi_fine = (bpi_fine-bpi_fine_mean)/bpi_fine_sd,
              tri = (tri-tri_mean)/tri_sd)
     
-    ## make season a factor just in case it didn't change  
-    prediction_frame_year_season_scaled$season <- factor(prediction_frame_year_season_scaled$season,
-                                                         levels = c("spring", "fall"),
-                                                         labels = c(1,2))
+    ## rename season met_season to match with model   
+    #prediction_frame_year_scaled <- prediction_frame_year_scaled %>%
+      #rename(met_season = season)
     
-    cat ("Predicting for:", yr, ss, "\n")
+    ##ensure its a factor 
+    #prediction_frame_year_season_scaled$met_season <- factor(prediction_frame_year_season_scaled$met_season,
+                                                            # levels = c("winter", "spring", "summer", "fall"),
+                                                             #labels = c(1,2,3, 4))
+                                                         
+    
+    cat ("Predicting for:", yr, "\n")
     
     ## now loop every single stack frame through this predict function
-    preds_year_season <- predict(mod_rw_temp, 
-                                 newdata=prediction_frame_year_season_scaled, 
+    preds_year_season <- predict(mod_ices_ns, 
+                                 newdata=prediction_frame_year_scaled, 
                                  type = "response")
     
     saveRDS(
       preds_year_season,
-      file = sprintf("predictions/preds_%s_%s.rds", yr, ss)
+      file = sprintf("predictions/preds_%s.rds", yr)
     )
     
-    rm(prediction_frame_year_season,
-       prediction_frame_year_season_scaled,
+    rm(prediction_frame_year,
+       prediction_frame_year_scaled,
        preds_year_season)
     
     gc()
     
   }
-}
 
  
-## select predictions
-years <- 2000:2019
-seasons <- c("fall", "spring")
-
+## select predictions and see raster to verify 
 
 preds_2007_spring <- readRDS("predictions/preds_2007_spring.rds")
-
 prediction_raster <- deepcopy(env_stack_all[[1]])
-
 values(prediction_raster) <- NA
-
 values(prediction_raster)[complete_cases] <- preds_2007_spring$est
 plot(prediction_raster)
 
 writeRaster(prediction_raster, "prediction_rasters/preds_2007_spring.tif")
 
-## average predictions for spring/summer/fall 
-spring_mean_2000_2009 <- make_decadal_mean_from_preds(
-  years = 2000:2009,
-  seasons = "spring",
-  pred_dir = "predictions",
-  template_raster = env_stack_all[[1]],
-  complete_cases = complete_cases,   
-  pred_col = "est",
-  out_file = "spring_mean_2000_2009.tif"
-)
-spring_mean_2010_2019 <- make_decadal_mean_from_preds(
-  years = 2010:2019,
-  seasons = "spring",
-  pred_dir = "predictions",
-  template_raster = env_stack_all[[1]],
-  complete_cases = complete_cases,   
-  pred_col = "est",
-  out_file = "spring_mean_2010_2019.tif"
-)
-fall_mean_2000_2009 <- make_decadal_mean_from_preds(
-  years = 2000:2009,
-  seasons = "fall",
-  pred_dir = "predictions",
-  template_raster = env_stack_all[[1]],
-  complete_cases = complete_cases,   
-  pred_col = "est",
-  out_file = "fall_mean_2000_2009.tif"
-)
-fall_mean_2010_2019 <- make_decadal_mean_from_preds(
-  years = 2010:2019,
-  seasons = "fall",
-  pred_dir = "predictions",
-  template_raster = env_stack_all[[1]],
-  complete_cases = complete_cases,   
-  pred_col = "est",
-  out_file = "fall_mean_2010_2019.tif"
-)
+## maxent predictions
 
+## make a smaller set
+dir.create("prediction_frames", showWarnings = FALSE)
+dir.create("predictions", showWarnings = FALSE)
+years <- c(2000:2009)
 
-
+for (yr in years) {
+  
+  cat("\nProcessing:", yr, "\n")
+  
+  stack_file <- sprintf("prediction_stacks/stack_%s.rds", yr)
+  prediction_stack_year <- readRDS(stack_file)
+  
+  cat("Changing stack to frame for:", yr, "\n")
+  
+  prediction_frame_year <- as.data.frame(prediction_stack_year, na.rm = FALSE)
+  
+  rm(prediction_stack_year)
+  gc()
+  
+  complete_cases <- complete.cases(prediction_frame_year)
+  prediction_frame_year <- prediction_frame_year[complete_cases,] 
+  
+  cat ("Predicting for:", yr, "\n")
+  
+  ## now loop every single stack frame through this predict function
+  preds_year <- predict(mod_maxent, 
+                               newdata=prediction_frame_year, 
+                               type = "cloglog")
+  
+  saveRDS(
+    preds_year,
+    file = sprintf("predictions/maxent_preds_%s.rds", yr)
+  )
+  
+  rm(prediction_frame_year,
+     preds_year)
+  
+  gc()
+  
+}

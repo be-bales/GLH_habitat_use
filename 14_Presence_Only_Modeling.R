@@ -31,7 +31,7 @@ for(yr in years) {
     lat = seq(from = ymin(latlon_extent), to = ymax(latlon_extent), by = background_resolution_degrees))
   
   ## convert to spatial data 
-  bg_vect <- vect(background_points, geom = c("lon", "lat"), crs = crs(temp_layer))
+  bg_vect <- terra::vect(background_points, geom = c("lon", "lat"), crs = crs(temp_layer))
   
   background_points$temp <- as.numeric(terra::extract(temp_layer, bg_vect, ID = FALSE)[, time_idx])
   background_points$depth <- as.numeric(terra::extract(depth, bg_vect, ID = FALSE)[, 1])
@@ -82,7 +82,9 @@ mod_maxent <- maxnet(
 #mod_maxent <- readRDS("Data/maxent_full_model.rds")
 
 saveRDS(mod_maxent, "Data/maxent_model_april.rds")
+mod_maxent <- readRDS("Data/maxent_model_april.rds")
 
+"Data/maxent_model_april.rds"
 
 summary(mod_maxent)
 
@@ -92,16 +94,18 @@ maxent_predictions <- predict(mod_maxent, maxent_data[, pred_vars], type = "clog
 #saveRDS(maxent_predictions, "Data/maxent_predictions.rds")
 #maxent_predictions <- readRDS("Data/maxent_predictions.rds")
 
-maxent_data$preds <- maxent_predictions
+maxent_data$preds <- maxent_predictions[,1]
 #write.csv(maxent_data, "Data/maxent_data_with_preds.csv")
 
 ## calculate overall auc
+?pROC::roc()
 roc <- roc(maxent_data$presence, maxent_data$preds, quiet = TRUE)
 auc <- as.numeric(auc(roc))
+auc
 auc_full <- auc
 
 ## export prediction raster
-prediction_stack <- readRDS("prediction_stacks/stack_2001_spring.rds")
+prediction_stack <- readRDS("prediction_stacks/stack_2008.rds")
 
 prediction_frame <- as.data.frame(prediction_stack, na.rm = FALSE)
 
@@ -111,27 +115,27 @@ prediction_frame <- prediction_frame[complete_cases,]
 maxent_predictions_new <- predict(mod_maxent, newdata=prediction_frame, 
                                   type = "cloglog")
 
-#maxent_test <- readRDS("maxent_climate_predictions/preds_119_2020_fall.rds")
-
 prediction_raster <- deepcopy(prediction_stack[[1]])
 values(prediction_raster) <- NA
 values(prediction_raster)[complete_cases] <- maxent_predictions_new
 plot(prediction_raster)
 
-writeRaster(prediction_raster, "predictions/maxent_raster_april.tiff")
-
+writeRaster(prediction_raster, "prediction_rasters/maxent_preds_2000_2009.tiff")
 
 ## permutation importance - 200 permutations
 pred_vars <- c( "temp", "sal", "depth", "bpi_coarse", "bpi_fine",
                 "tri", "smf")
 
-n_perms <- 1000
+## for perm. imp
+
+n_perms <- 200
+
 perm_importance <- lapply(pred_vars, function(v) {
   
   delta_aucs <- replicate(n_perms, {
     
-    # Copy the full dataset including X/Y
-    perm_data <- maxent_data
+    # Copy the full dataset
+    perm_data <- maxent_data ##needs to be unscaled data
     
     # Permute only the predictor
     perm_data[[v]] <- sample(perm_data[[v]])
@@ -141,8 +145,8 @@ perm_importance <- lapply(pred_vars, function(v) {
                         newdata = perm_data,
                         type = "cloglog")
     
-    # Extract predictions (numeric vector)
-    perm_preds <- perm_out
+    # Extract predictions 
+    perm_preds <- perm_out[,1]
     
     auc_perm <- as.numeric(auc(maxent_data$presence, perm_preds))
     auc_full - auc_perm
@@ -159,6 +163,7 @@ perm_importance <- do.call(rbind, perm_importance) %>%
   arrange(desc(delta_auc))
 perm_importance$delta_auc <- round(perm_importance$delta_auc, 4)
 perm_importance
+
 
 ### partial response curves
 

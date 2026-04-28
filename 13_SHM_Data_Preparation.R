@@ -175,12 +175,12 @@ pres_abs <- pres_abs %>%
 
 #saveRDS(pres_abs, "Data/pres_abs_extracted.rds")
 pres_abs <- readRDS("Data/pres_abs_extracted.rds")
+pres_abs <- pres_abs %>%
+  tidyr::drop_na()
 
 ## exploratory analysis
 
 ## visualize variable distributions
-
-
 pres_abs_long <- pres_abs %>%
   pivot_longer(
     cols = c(temp, sal, do, depth, bpi_coarse, bpi_fine, slope, tri, smf),
@@ -188,14 +188,13 @@ pres_abs_long <- pres_abs %>%
     values_to = "value"
   )
 
-distributions <- ggplot(data = pres_abs_long %>%
+ggplot(data = pres_abs_long %>%
          filter(presence == 1), aes(x = value)) +
   geom_histogram(binwidth = 0.3) +
   facet_wrap(~ variable, ncol = 2, scales = "free") +
   theme_bw() +
   labs(title = " Covariate Data Distributions")
   
-
 ggsave("Figures/distributions.tif",
        dpi = 300,
        width = 17,
@@ -206,7 +205,6 @@ ggsave("Figures/distributions.tif",
        bg = "white")
   
 ## view sampling distribution 
-
 pres_abs$year <- as.numeric(pres_abs$year)
 pres_abs$season <- factor(pres_abs$season)
 str(pres_abs$season)
@@ -372,8 +370,4 @@ sampling_summary <- pres_abs %>%
     "Months" = months,
     "n Points" = n_points)
 
-# View the table
-print(sampling_summary, n = Inf)
-
-# Save as CSV
-write.csv(sampling_summary, "Results/sampling_summary_table.csv", row.names = FALSE)
+write.csv(sampling_summary, "Data/sampling_summary_table.csv")

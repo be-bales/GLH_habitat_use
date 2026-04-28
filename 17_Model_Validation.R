@@ -1,6 +1,4 @@
 ## 2020-2025 Model Validation 
-library(pROC)
-
 ## create ground-truth presence data
 gt_data <- full_database %>%
   dplyr::filter(year >= 2020, year <= 2025) %>% 
@@ -162,6 +160,7 @@ mod_climate_ices_w_season <- sdmTMB(
 summary(mod_climate_ices_w_season)
 sanity(mod_climate_ices_w_season)
 saveRDS(mod_climate_ices_w_season, "Data/mod_climate_ices_w_season.rds")
+mod_climate_ices <-readRDS("Data/mod_climate_ices_w_season.rds")
 
 ## use climate model, trained on original data, to predict presence at real trawl points 
 pred_2020_2025_ices <- predict(mod_climate_ices_w_season, 
@@ -172,8 +171,6 @@ pred_2020_2025_ices
 
 #saveRDS(pred_2020_2025, "Data/ground_truth_predictions.rds")
 #pred_2020_2025 <- readRDS("Data/ground_truth_predictions.rds")
-
-pred_2020_2025_no_season$presence <- future_data$presence
 
 # AUC 
 roc_validation <- roc(pred_2020_2025_ices$presence, plogis(pred_2020_2025_ices$est), quiet = TRUE)
@@ -187,18 +184,17 @@ future_data$est <- pred_2020_2025$est
 
 
 ## now try with MaxEnt 
-maxent_pred_2020_2025 <- predict(mod_maxent_new, 
-                          newdata = future_data, 
-                          type = "cloglog"
-)
+mod_maxent <- readRDS("Data/maxent_model_april.rds")
 
-future_data$maxent_pred <- maxent_pred_2020_2025[,]
+maxent_pred_2020_2025 <- predict(mod_maxent, gt_data, type = "cloglog")
+
+gt_data$maxent_pred <- maxent_pred_2020_2025[,1]
 
 #saveRDS(maxent_pred_2020_2025, "Data/maxent_pred_2020_2025.rds")
 #maxent_pred_2020_2025 <- readRDS("Data/maxent_pred_2020_2025.rds")
 
 # AUC 
-roc_validation <- roc(future_data$presence, future_data$maxent_pred, quiet = TRUE)
+roc_validation <- roc(gt_data$presence, gt_data$maxent_pred, quiet = TRUE)
 auc_validation <- as.numeric(auc(roc_validation))
 print(auc_validation)
 ci(roc_validation)
