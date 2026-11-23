@@ -84,8 +84,6 @@ mod_maxent <- maxnet(
 saveRDS(mod_maxent, "Data/maxent_model_april.rds")
 mod_maxent <- readRDS("Data/maxent_model_april.rds")
 
-"Data/maxent_model_april.rds"
-
 summary(mod_maxent)
 
 ## make predictions

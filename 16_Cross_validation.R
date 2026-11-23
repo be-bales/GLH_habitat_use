@@ -120,7 +120,7 @@ sdm_cv_simple <- sdmTMB_cv(
   family =binomial(link = "logit"),
   spatial = "on", 
   time = "year",
-  spatiotemporal = "off",
+  spatiotemporal = "RW",
   fold_ids = sdm_cv_data$fold_id,
 )
 

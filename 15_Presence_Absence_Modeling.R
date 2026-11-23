@@ -353,11 +353,7 @@ write.csv(ran_pars, "Data/ran_pars_ices.csv")
 ## plot residuals on map
 mod_resids <- cbind(mod_ices$data, resids_mle)
 
-## import land
-land_shp <- st_read("Data/Land_shp.shp")
-land_shp_km <- st_transform(land_shp, crs = 32622 )
-st_geometry(land_shp_km) <- st_geometry(land_shp_km) / 1000
-st_crs(land_shp_km) <- st_crs(32622)
+
 
 ## convert to spatial
 mod_resids_df <- st_as_sf(mod_resids, coords = c("X", "Y"), crs = 32622)

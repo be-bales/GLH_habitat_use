@@ -1,6 +1,10 @@
 ## modeling script analyzing trawl data and environmental variable relationships
 
-setwd("D:/BrennaStuff/Github/Turbot-Thesis-Brenna")
+setwd("C:/Users/befat/Desktop/GLH")
+
+remotes::install_github("bio-oracle/biooracler")
+
+install.packages("colorspace")
 
 ## load libraries
 library(sf)
@@ -18,6 +22,7 @@ library(tidyr)
 library(corrplot)
 library(stats)
 library(performance)
+library(colorspace)
 
 ## load trawl dataset
 full_database <- read.csv("Data/multispecies_trawl_surveys_1971_2025.csv")
@@ -25,10 +30,12 @@ full_database <- read.csv("Data/multispecies_trawl_surveys_1971_2025.csv")
 full_database$long.end <- full_database$long.end* -1
 full_database$long.start <- full_database$long.start* -1
 
+#write.csv(full_database, "Data/trawlpoints.csv")
+
 ## select fall only
 ## full_database <- full_database %>% filter(season == "fall")
 
-## format for presence-absence modeling, 1996 onwards (spatiotemporal GLMM)
+## format for presence-absence modeling
 pres_abs <- full_database %>%
   dplyr::filter(year >= 2000, year <= 2019) %>% 
   dplyr::select(
@@ -212,47 +219,60 @@ str(pres_abs$season)
 ## import NAFO shapefile
 ## add NAFO Divisions shapefile 
 NAFO_areas <- st_read("Data/NAFO_areas_ch3.shp")
-plot(NAFO_areas)
 NAFO_areas <- st_transform(NAFO_areas, crs = 4326)
 
 ## NAFO centroids and NAFO base map
 NAFO_centroids <- st_centroid(NAFO_areas) 
 NAFO_centroids_coords <- cbind(NAFO_centroids, st_coordinates(NAFO_centroids))
 
+## import land
+land_shp <- st_read("Data/Land_shp.shp")
+land_shp_km <- st_transform(land_shp, crs = 32622 )
+st_geometry(land_shp_km) <- st_geometry(land_shp_km) / 1000
+st_crs(land_shp_km) <- st_crs(32622)
+
 ## changing to just visualizing sampling season w/ NAFO boundaries
 
-sampling_dist_4 <- ggplot() +
-  geom_sf(data = NAFO_areas, fill = "grey95", colour = "black") +
+ggplot() +
+  geom_sf(data = NAFO_areas, fill = "grey95", colour = "grey30") +
   geom_point(data = pres_abs, aes(x = lon, y = lat, color = season),
-             size = 0.1,
+             size = 0.3,
              alpha = 0.5) +
-  coord_sf(xlim = c(-62, -44), ylim = c(42, 59.2), expand = FALSE) +
-  geom_sf_text(data = NAFO_centroids_coords, aes(label = Label), size = 2) + 
-  scale_x_continuous(name = "Longitude", breaks = seq(-60, -48, by = 6)) +
-  scale_y_continuous(name = "Latitude", breaks = seq(58, 42, by = -6)) +
+  geom_sf(data = land_shp, fill = "grey95", colour = "grey30") +
+  coord_sf(xlim = c(-61, -46), ylim = c(42, 58.5), expand = FALSE) +
+  scale_color_manual(values = c("#F8766D", "#00BFC4"),labels = c("Fall", "Spring"),
+                     name = "Season") +
   facet_wrap(~year) +
   theme_bw() + 
   theme(panel.grid=element_blank(),
         plot.background = element_rect(fill = "white", color = NA),
+        panel.spacing = unit(0.1, "cm"),
         legend.key.size = unit(0.5, 'cm'),
+        legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
         legend.text = element_text(size =10),
+        legend.position = "bottom",
         text = element_text(size = 10),
-        axis.title.x  = element_text(size = 10),
-        axis.title.y  = element_text(size = 10))+
-  guides(color = guide_legend(override.aes = list(size = 2))) 
+        strip.text.x = element_text(size =10),
+        axis.title  = element_blank(),
+        axis.ticks  = element_blank(),
+        axis.text = element_blank(),
+        legend.box.spacing = unit(0.1,'cm')) +
+  guides(color = guide_legend(override.aes = list(size = 2)))
 
 
-ggsave("Figures/sampling_dist_4.tif",
+ggsave("Figures/sampling_dist.tif",
        dpi = 300,
-       width = 18,
-       height = 18,
+       width = 13,
+       height = 15,
        device = "tiff",
        compression = "lzw",
        units = "cm",
        bg = "white")
 
 ## visualize this by depth
-sampling_depth <- ggplot(pres_abs, aes(x = month, y = depth, color = season)) +
+ggplot(pres_abs, aes(x = month, y = depth, color = season)) +
+  scale_color_manual(values = c("#F8766D", "#00BFC4"),labels = c("Fall", "Spring"),
+                     name = "Season") +
   geom_point(alpha = 0.5, size = 1) +
   facet_wrap(~year) +
   scale_x_continuous(breaks = c(1,4, 7, 10), 
@@ -263,16 +283,16 @@ sampling_depth <- ggplot(pres_abs, aes(x = month, y = depth, color = season)) +
   theme_bw() + 
   theme(panel.grid=element_blank(),
         plot.background = element_rect(fill = "white", color = NA),
-        legend.text = element_text(size =10),
-        text = element_text(size = 10),
+        legend.text = element_text(size =9),
+        text = element_text(size = 9),
         axis.title.x  = element_text(size = 10),
         axis.title.y  = element_text(size = 10))+
   guides(color = guide_legend(override.aes = list(size = 2)))
 
 ggsave("Figures/sampling_depth.tif",
        dpi = 300,
-       width = 18,
-       height = 18,
+       width = 15,
+       height = 13,
        device = "tiff",
        compression = "lzw",
        units = "cm",
@@ -281,6 +301,7 @@ ggsave("Figures/sampling_depth.tif",
 
 ## compare bio-ORACLE and trawl depth and temp data 
 pres_abs$trawl_depth <- pres_abs$trawl_depth * -1
+
 
 surfaces_depth <- pres_abs %>%
   dplyr::select(
@@ -320,34 +341,89 @@ surfaces_long_temp <- pivot_longer(
 )
 
 
-p_scatter_temp <- ggplot(surfaces_temp, aes(x = trawl_temp, y = bo_temp)) +
+ggplot(surfaces_temp, aes(x = trawl_temp, y = bo_temp)) +
   geom_point(alpha = 0.5, color = "coral") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
   geom_smooth(method = "lm", se = TRUE, color = "steelblue") +
-  labs(title = "Temperature: Trawl vs Bio-ORACLE",
-       x = "Trawl Temperature (°C)",
-       y = "Bio-ORACLE Temperature (°C)") +
-  theme_bw()
+  labs(
+       x = "Trawl temperature (°C)",
+       y = "Bio-ORACLE temperature (°C)") +
+  theme_bw() +
+  theme(
+        text = element_text(size = 10),
+        axis.title.x  = element_text(size = 10),
+        axis.title.y  = element_text(size = 10))
 
-p_scatter_depth <- ggplot(surfaces_depth, aes(x = trawl_depth, y = bo_depth)) +
+ggplot(surfaces_depth, aes(x = trawl_depth, y = bo_depth)) +
   geom_point(alpha = 0.5, color = "steelblue") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
   geom_smooth(method = "lm", se = TRUE, color = "coral") +
-  labs(title = "Depth: Trawl vs Bio-ORACLE",
-       x = "Trawl Depth (m)",
-       y = "Bio-ORACLE Depth (m)") +
-  theme_bw()
+  labs(
+       x = "Trawl depth (m)",
+       y = "Bio-ORACLE depth (m)") +
+  theme_bw()+
+theme(
+  text = element_text(size = 10),
+  axis.title.x  = element_text(size = 10),
+  axis.title.y  = element_text(size = 10))
 
-scatter <- p_scatter_temp | p_scatter_depth ##need to fix text sizes
 
-ggsave("Figures/scatter_comparison.tif", 
+ggsave("Figures/scatter_comparison_depth.tif", 
        dpi = 300,
-       width = 6,
-       height = 4,
+       width = 10,
+       height = 9,
        device = "tiff",
        compression = "lzw",
        units = "cm",
        bg = "white")
+
+
+## differences map
+pres_abs <- pres_abs %>%
+  mutate(temp_diff = (abs(trawl_temp) - abs(temp))) ##trawl minus bio-oracle
+
+ggplot(pres_abs, aes(temp_diff)) +
+  geom_histogram()
+
+temps <- pres_abs %>%
+  summarize(percent_above = sum(temp_diff > 2)/n() * 100,
+             percent_below = sum(temp_diff < 2)/n() * 100)
+
+ggplot() +
+  geom_sf(data = NAFO_areas, fill = "grey90", color = "black") +  
+  geom_sf(data = land_shp, fill = "grey75", colour = "grey30") +
+  geom_point(data = pres_abs, aes(x = lon, y = lat, color = temp_diff),
+            size = 0.3, alpha = 0.9) +
+  scale_color_continuous_diverging(name = "Temperature\ndifferential (°C)", 
+                                   palette = "Blue-Red 3") +
+  coord_sf(xlim = c(-62, -44), ylim = c(42, 59), expand = FALSE) +
+  facet_wrap(~year)+
+  scale_x_continuous(name = "Longitude", 
+                     breaks = c(-59,  -48)) +
+  scale_y_continuous(name = "Latitude", 
+                     breaks = c(58, 51, 43)) +
+  theme_bw() + 
+  theme(panel.grid=element_blank(),
+        plot.background = element_rect(fill = "white", color = NA),
+        text = element_text(size = 10),
+        legend.key.size = unit(0.3, 'cm'),
+        legend.key.height = unit(0.4, "cm"),
+        legend.key.spacing.y = unit(0.1, 'cm'),
+        legend.text = element_text(size =10),
+        strip.text.x = element_text(size =10),
+        axis.title.x  = element_text(size = 10),
+        axis.title.y  = element_text(size = 10))
+
+ggsave("Figures/spatial_temp_difference.tif", 
+       dpi = 300,
+       width = 18,
+       height = 16,
+       device = "tiff",
+       compression = "lzw",
+       units = "cm",
+       bg = "white")
+
+
 
 ## data summary table 
 sampling_summary <- pres_abs %>%

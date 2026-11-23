@@ -107,6 +107,8 @@ future_data$season <- factor(future_data$season,
                                         levels = c("spring", "fall"),
                                         labels = c(1,2))
 
+write.csv(future_data, "Data/future_data.csv")
+
 ## create new model with extra years
 extra_years <- c(2020:2050)
 
